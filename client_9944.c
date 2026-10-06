@@ -179,19 +179,20 @@ int main(void)
 
     printf("\n");
     printf("Connection is active.\n");
-    printf("Available commands: LIST, BCAST <message>, QUIT\n");
+    printf("Available commands:\n");
+    printf("  LIST\n");
+    printf("  BCAST <message>\n");
+    printf("  PMSG <username> <message>\n");
+    printf("  QUIT\n");
     printf("\n");
 
 
     /*
      * Interactive client loop.
      *
-     * select() allows the client to:
-     *
-     * 1. Read commands from keyboard.
-     * 2. Receive messages from server.
-     *
-     * at the same time.
+     * select() allows the client to
+     * receive incoming messages while
+     * waiting for keyboard input.
      */
     while (1)
     {
@@ -239,7 +240,7 @@ int main(void)
 
 
         /*
-         * Server sent something.
+         * Server sent data.
          */
         if (FD_ISSET(client_fd,
                      &read_fds))
@@ -270,7 +271,7 @@ int main(void)
 
 
         /*
-         * User typed something.
+         * User typed a command.
          */
         if (FD_ISSET(STDIN_FILENO,
                      &read_fds))
@@ -346,7 +347,7 @@ int main(void)
 
 
             /*
-             * Send normal command.
+             * Send command.
              */
             strcat(command, "\n");
 
@@ -363,6 +364,9 @@ int main(void)
     }
 
 
+    /*
+     * Close connection.
+     */
     close(client_fd);
 
     printf("Disconnected from server.\n");

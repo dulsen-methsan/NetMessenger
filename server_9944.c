@@ -58,6 +58,24 @@ int username_exists(const char *username)
 }
 
 
+/* Find client by username */
+int find_client_by_username(const char *username)
+{
+    int i;
+
+    for (i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (clients[i].registered &&
+            strcmp(clients[i].username, username) == 0)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+
 /* Send current registered users */
 void send_user_list(int client_fd)
 {
@@ -106,7 +124,7 @@ void send_user_list(int client_fd)
 }
 
 
-/* Broadcast message to all other registered clients */
+/* Broadcast message to all other clients */
 void broadcast_message(int sender_index,
                        const char *message)
 {
@@ -134,6 +152,48 @@ void broadcast_message(int sender_index,
     }
 
     pthread_mutex_unlock(&clients_mutex);
+}
+
+
+/* Send private message to one user */
+int send_private_message(int sender_index,
+                         const char *target_username,
+                         const char *message)
+{
+    char response[1200];
+
+    pthread_mutex_lock(&clients_mutex);
+
+    int target_index =
+        find_client_by_username(target_username);
+
+    if (target_index == -1)
+    {
+        pthread_mutex_unlock(&clients_mutex);
+
+        return -1;
+    }
+
+    /*
+     * Create private message.
+     *
+     * NID is NOT included because MSG lines
+     * forwarded to clients do not contain NID.
+     */
+    snprintf(response,
+             sizeof(response),
+             "MSG PRIV %s %s\n",
+             clients[sender_index].username,
+             message);
+
+    send(clients[target_index].socket_fd,
+         response,
+         strlen(response),
+         0);
+
+    pthread_mutex_unlock(&clients_mutex);
+
+    return 0;
 }
 
 
@@ -329,16 +389,10 @@ void *handle_client(void *arg)
                    message);
 
 
-            /*
-             * Send message to all other clients.
-             */
             broadcast_message(client_index,
                               message);
 
 
-            /*
-             * Confirm to sender.
-             */
             char response[256];
 
             snprintf(response,
@@ -350,6 +404,141 @@ void *handle_client(void *arg)
                  response,
                  strlen(response),
                  0);
+        }
+
+
+        /*
+         * PMSG
+         *
+         * Format:
+         * PMSG <username> <message>
+         */
+        else if (strncmp(buffer, "PMSG ", 5) == 0)
+        {
+            if (!registered)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 NOT_REGISTERED NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+
+            char command_copy[1024];
+
+            strncpy(command_copy,
+                    buffer + 5,
+                    sizeof(command_copy) - 1);
+
+            command_copy[sizeof(command_copy) - 1] = '\0';
+
+
+            /*
+             * Separate target username
+             * from message.
+             */
+            char *space =
+                strchr(command_copy, ' ');
+
+
+            if (space == NULL)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 INVALID_COMMAND NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+
+            *space = '\0';
+
+            char *target_username =
+                command_copy;
+
+            char *message =
+                space + 1;
+
+
+            if (strlen(target_username) == 0 ||
+                strlen(message) == 0)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 INVALID_COMMAND NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+
+            printf("Private message from %s to %s: %s\n",
+                   clients[client_index].username,
+                   target_username,
+                   message);
+
+
+            /*
+             * Send private message.
+             */
+            int result =
+                send_private_message(client_index,
+                                     target_username,
+                                     message);
+
+
+            if (result == -1)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 002 USER_NOT_FOUND NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+            }
+            else
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "OK SENT NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+            }
         }
 
 
