@@ -40,7 +40,7 @@ int find_free_slot(void)
 }
 
 
-/* Check whether a username is already registered */
+/* Check whether username already exists */
 int username_exists(const char *username)
 {
     int i;
@@ -58,23 +58,65 @@ int username_exists(const char *username)
 }
 
 
-/* Handle one connected client */
+/* Send current registered users */
+void send_user_list(int client_fd)
+{
+    char response[1024];
+
+    int offset = 0;
+    int first_user = 1;
+
+    offset += snprintf(response + offset,
+                       sizeof(response) - offset,
+                       "OK USERS");
+
+    pthread_mutex_lock(&clients_mutex);
+
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (clients[i].registered)
+        {
+            offset += snprintf(response + offset,
+                               sizeof(response) - offset,
+                               "%s %s",
+                               first_user ? " " : ", ",
+                               clients[i].username);
+
+            first_user = 0;
+        }
+    }
+
+    pthread_mutex_unlock(&clients_mutex);
+
+    offset += snprintf(response + offset,
+                       sizeof(response) - offset,
+                       " NID:%s\n",
+                       NID);
+
+    send(client_fd,
+         response,
+         strlen(response),
+         0);
+}
+
+
+/* Handle one client */
 void *handle_client(void *arg)
 {
     int client_index = *(int *)arg;
 
     free(arg);
 
-    int client_fd = clients[client_index].socket_fd;
+    int client_fd =
+        clients[client_index].socket_fd;
 
     char buffer[1024];
 
+    int registered_first_command = 0;
+
     printf("Client connected.\n");
 
-    /*
-     * Keep receiving commands while the
-     * client connection remains active.
-     */
+
     while (1)
     {
         ssize_t bytes_received;
@@ -92,8 +134,8 @@ void *handle_client(void *arg)
 
         buffer[bytes_received] = '\0';
 
-        /* Remove newline character */
-        buffer[strcspn(buffer, "\n")] = '\0';
+        /* Remove newline */
+        buffer[strcspn(buffer, "\r\n")] = '\0';
 
 
         /*
@@ -109,15 +151,36 @@ void *handle_client(void *arg)
 
             username[sizeof(username) - 1] = '\0';
 
+
+            if (registered_first_command)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 ALREADY_REGISTERED NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+
             printf("Register request received for username: %s\n",
                    username);
+
 
             char response[256];
 
             pthread_mutex_lock(&clients_mutex);
 
+
             /*
-             * Check whether username already exists.
+             * Check duplicate username
              */
             if (username_exists(username))
             {
@@ -128,9 +191,6 @@ void *handle_client(void *arg)
             }
             else
             {
-                /*
-                 * Store the new username.
-                 */
                 strncpy(clients[client_index].username,
                         username,
                         sizeof(clients[client_index].username) - 1);
@@ -141,6 +201,9 @@ void *handle_client(void *arg)
 
                 clients[client_index].registered = 1;
 
+                registered_first_command = 1;
+
+
                 snprintf(response,
                          sizeof(response),
                          "OK REGISTERED %s NID:%s\n",
@@ -148,7 +211,9 @@ void *handle_client(void *arg)
                          NID);
             }
 
+
             pthread_mutex_unlock(&clients_mutex);
+
 
             send(client_fd,
                  response,
@@ -158,7 +223,58 @@ void *handle_client(void *arg)
 
 
         /*
-         * Invalid command
+         * LIST command
+         */
+        else if (strcmp(buffer, "LIST") == 0)
+        {
+            if (!registered_first_command)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 NOT_REGISTERED NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+            printf("LIST request received.\n");
+
+            send_user_list(client_fd);
+        }
+
+
+        /*
+         * QUIT command
+         */
+        else if (strcmp(buffer, "QUIT") == 0)
+        {
+            printf("QUIT request received.\n");
+
+            char response[256];
+
+            snprintf(response,
+                     sizeof(response),
+                     "OK BYE NID:%s\n",
+                     NID);
+
+            send(client_fd,
+                 response,
+                 strlen(response),
+                 0);
+
+            break;
+        }
+
+
+        /*
+         * Unknown command
          */
         else
         {
@@ -178,8 +294,7 @@ void *handle_client(void *arg)
 
 
     /*
-     * Client disconnected.
-     * Clean up its slot.
+     * Clean up client
      */
     close(client_fd);
 
@@ -191,11 +306,12 @@ void *handle_client(void *arg)
 
     pthread_mutex_unlock(&clients_mutex);
 
+
     return NULL;
 }
 
 
-/* Main server function */
+/* Main server */
 int main(void)
 {
     int server_fd;
@@ -206,7 +322,7 @@ int main(void)
 
 
     /*
-     * Initialize all client slots.
+     * Initialize client slots
      */
     for (i = 0; i < MAX_CLIENTS; i++)
     {
@@ -217,7 +333,7 @@ int main(void)
 
 
     /*
-     * Create TCP socket.
+     * Create TCP socket
      */
     server_fd = socket(AF_INET,
                        SOCK_STREAM,
@@ -231,7 +347,7 @@ int main(void)
 
 
     /*
-     * Configure server address.
+     * Configure server address
      */
     memset(&server_addr,
            0,
@@ -247,7 +363,7 @@ int main(void)
 
 
     /*
-     * Bind socket to port 15944.
+     * Bind socket
      */
     if (bind(server_fd,
              (struct sockaddr *)&server_addr,
@@ -262,7 +378,7 @@ int main(void)
 
 
     /*
-     * Start listening for clients.
+     * Listen
      */
     if (listen(server_fd,
                BACKLOG) < 0)
@@ -282,7 +398,7 @@ int main(void)
 
 
     /*
-     * Continuously accept new clients.
+     * Accept clients continuously
      */
     while (1)
     {
@@ -294,9 +410,6 @@ int main(void)
         int client_fd;
 
 
-        /*
-         * Accept a client connection.
-         */
         client_fd = accept(server_fd,
                            (struct sockaddr *)&client_addr,
                            &client_len);
@@ -308,14 +421,15 @@ int main(void)
         }
 
 
-        /*
-         * Find an available client slot.
-         */
         pthread_mutex_lock(&clients_mutex);
 
         int client_index =
             find_free_slot();
 
+
+        /*
+         * Server full
+         */
         if (client_index == -1)
         {
             pthread_mutex_unlock(&clients_mutex);
@@ -339,7 +453,7 @@ int main(void)
 
 
         /*
-         * Store client socket.
+         * Store client socket
          */
         clients[client_index].socket_fd =
             client_fd;
@@ -347,14 +461,20 @@ int main(void)
         clients[client_index].registered =
             0;
 
+        clients[client_index].username[0] =
+            '\0';
+
         pthread_mutex_unlock(&clients_mutex);
 
 
         /*
-         * Allocate memory for the thread argument.
+         * Create thread
          */
+        pthread_t thread;
+
         int *index =
             malloc(sizeof(int));
+
 
         if (index == NULL)
         {
@@ -371,14 +491,9 @@ int main(void)
             continue;
         }
 
+
         *index = client_index;
 
-
-        /*
-         * Create a separate thread
-         * for the connected client.
-         */
-        pthread_t thread;
 
         if (pthread_create(&thread,
                            NULL,
@@ -402,9 +517,7 @@ int main(void)
 
 
         /*
-         * Detach the thread so that
-         * its resources are released
-         * automatically when it finishes.
+         * Detach thread
          */
         pthread_detach(thread);
     }

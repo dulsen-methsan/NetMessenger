@@ -7,14 +7,22 @@
 
 #define SERVER_IP "127.0.0.1"
 #define PORT 15944
+#define BUFFER_SIZE 1024
+
 
 int main(void)
 {
     int client_fd;
+
     struct sockaddr_in server_addr;
 
-    /* Create TCP socket */
-    client_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    /*
+     * Create TCP socket
+     */
+    client_fd = socket(AF_INET,
+                       SOCK_STREAM,
+                       0);
 
     if (client_fd < 0)
     {
@@ -22,73 +30,286 @@ int main(void)
         return 1;
     }
 
-    /* Configure server address */
-    memset(&server_addr, 0, sizeof(server_addr));
+
+    /*
+     * Configure server address
+     */
+    memset(&server_addr,
+           0,
+           sizeof(server_addr));
 
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
 
+    server_addr.sin_port =
+        htons(PORT);
+
+
+    /*
+     * Convert IP address
+     */
     if (inet_pton(AF_INET,
                   SERVER_IP,
                   &server_addr.sin_addr) <= 0)
     {
         perror("inet_pton");
+
         close(client_fd);
+
         return 1;
     }
 
-    /* Connect to server */
+
+    /*
+     * Connect to server
+     */
     if (connect(client_fd,
                 (struct sockaddr *)&server_addr,
                 sizeof(server_addr)) < 0)
     {
         perror("connect");
+
         close(client_fd);
+
         return 1;
     }
 
+
     printf("Connected to NetMessenger server.\n");
-    printf("Server: %s:%d\n", SERVER_IP, PORT);
 
-    /* Send registration */
-    char message[] = "REGISTER dulsen\n";
+    printf("Server: %s:%d\n",
+           SERVER_IP,
+           PORT);
 
+
+    /*
+     * Ask for username
+     */
+    char username[100];
+
+    printf("Enter username: ");
+
+    fflush(stdout);
+
+
+    if (fgets(username,
+              sizeof(username),
+              stdin) == NULL)
+    {
+        close(client_fd);
+
+        return 1;
+    }
+
+
+    /*
+     * Remove newline
+     */
+    username[strcspn(username,
+                     "\r\n")] = '\0';
+
+
+    /*
+     * Create REGISTER command
+     */
+    char message[256];
+
+    snprintf(message,
+             sizeof(message),
+             "REGISTER %s\n",
+             username);
+
+
+    /*
+     * Send REGISTER
+     */
     if (send(client_fd,
              message,
              strlen(message),
              0) < 0)
     {
         perror("send");
+
         close(client_fd);
+
         return 1;
     }
 
-    /* Receive registration response */
-    char buffer[1024];
+
+    /*
+     * Receive registration response
+     */
+    char buffer[BUFFER_SIZE];
 
     ssize_t bytes_received;
+
 
     bytes_received = recv(client_fd,
                           buffer,
                           sizeof(buffer) - 1,
                           0);
 
-    if (bytes_received > 0)
-    {
-        buffer[bytes_received] = '\0';
 
-        printf("Server response: %s", buffer);
+    if (bytes_received <= 0)
+    {
+        printf("Server disconnected.\n");
+
+        close(client_fd);
+
+        return 1;
     }
 
-    /* Keep connection open */
-    printf("Connection is active. Press Ctrl+C to disconnect.\n");
 
+    buffer[bytes_received] = '\0';
+
+
+    printf("Server response: %s",
+           buffer);
+
+
+    /*
+     * Registration failed
+     */
+    if (strncmp(buffer,
+                "OK REGISTERED",
+                13) != 0)
+    {
+        close(client_fd);
+
+        return 1;
+    }
+
+
+    printf("\n");
+    printf("Connection is active.\n");
+    printf("Available commands: LIST, QUIT\n");
+    printf("\n");
+
+
+    /*
+     * Interactive command loop
+     */
     while (1)
     {
-        sleep(1);
+        char command[BUFFER_SIZE];
+
+
+        printf("NetMessenger> ");
+
+        fflush(stdout);
+
+
+        /*
+         * Read command
+         */
+        if (fgets(command,
+                  sizeof(command),
+                  stdin) == NULL)
+        {
+            break;
+        }
+
+
+        /*
+         * Remove newline
+         */
+        command[strcspn(command,
+                        "\r\n")] = '\0';
+
+
+        /*
+         * Ignore empty command
+         */
+        if (strlen(command) == 0)
+        {
+            continue;
+        }
+
+
+        /*
+         * QUIT command
+         */
+        if (strcmp(command,
+                   "QUIT") == 0)
+        {
+            strcat(command, "\n");
+
+            if (send(client_fd,
+                     command,
+                     strlen(command),
+                     0) < 0)
+            {
+                perror("send");
+            }
+
+
+            bytes_received = recv(client_fd,
+                                  buffer,
+                                  sizeof(buffer) - 1,
+                                  0);
+
+
+            if (bytes_received > 0)
+            {
+                buffer[bytes_received] = '\0';
+
+                printf("Server response: %s",
+                       buffer);
+            }
+
+
+            break;
+        }
+
+
+        /*
+         * Send normal command
+         */
+        strcat(command, "\n");
+
+
+        if (send(client_fd,
+                 command,
+                 strlen(command),
+                 0) < 0)
+        {
+            perror("send");
+
+            break;
+        }
+
+
+        /*
+         * Receive server response
+         */
+        bytes_received = recv(client_fd,
+                              buffer,
+                              sizeof(buffer) - 1,
+                              0);
+
+
+        if (bytes_received <= 0)
+        {
+            printf("Server disconnected.\n");
+
+            break;
+        }
+
+
+        buffer[bytes_received] = '\0';
+
+
+        printf("Server response: %s",
+               buffer);
     }
 
+
+    /*
+     * Close connection
+     */
     close(client_fd);
+
+    printf("Disconnected from server.\n");
+
 
     return 0;
 }
