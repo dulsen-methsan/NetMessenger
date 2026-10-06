@@ -18,12 +18,11 @@ int main(void)
     struct sockaddr_in server_addr;
 
 
-    /*
-     * Create TCP socket.
-     */
-    client_fd = socket(AF_INET,
-                       SOCK_STREAM,
-                       0);
+    /* Create socket */
+    client_fd =
+        socket(AF_INET,
+               SOCK_STREAM,
+               0);
 
     if (client_fd < 0)
     {
@@ -32,22 +31,19 @@ int main(void)
     }
 
 
-    /*
-     * Configure server address.
-     */
+    /* Configure server */
     memset(&server_addr,
            0,
            sizeof(server_addr));
 
-    server_addr.sin_family = AF_INET;
+    server_addr.sin_family =
+        AF_INET;
 
     server_addr.sin_port =
         htons(PORT);
 
 
-    /*
-     * Convert server IP.
-     */
+    /* Convert IP address */
     if (inet_pton(AF_INET,
                   SERVER_IP,
                   &server_addr.sin_addr) <= 0)
@@ -60,9 +56,7 @@ int main(void)
     }
 
 
-    /*
-     * Connect to server.
-     */
+    /* Connect */
     if (connect(client_fd,
                 (struct sockaddr *)&server_addr,
                 sizeof(server_addr)) < 0)
@@ -82,9 +76,7 @@ int main(void)
            PORT);
 
 
-    /*
-     * Ask for username.
-     */
+    /* Get username */
     char username[100];
 
     printf("Enter username: ");
@@ -106,9 +98,7 @@ int main(void)
                      "\r\n")] = '\0';
 
 
-    /*
-     * Create REGISTER command.
-     */
+    /* REGISTER */
     char message[256];
 
     snprintf(message,
@@ -117,9 +107,6 @@ int main(void)
              username);
 
 
-    /*
-     * Send REGISTER.
-     */
     if (send(client_fd,
              message,
              strlen(message),
@@ -133,18 +120,14 @@ int main(void)
     }
 
 
-    /*
-     * Receive registration response.
-     */
+    /* Registration response */
     char buffer[BUFFER_SIZE];
 
-    ssize_t bytes_received;
-
-
-    bytes_received = recv(client_fd,
-                          buffer,
-                          sizeof(buffer) - 1,
-                          0);
+    ssize_t bytes_received =
+        recv(client_fd,
+             buffer,
+             sizeof(buffer) - 1,
+             0);
 
 
     if (bytes_received <= 0)
@@ -157,16 +140,14 @@ int main(void)
     }
 
 
-    buffer[bytes_received] = '\0';
+    buffer[bytes_received] =
+        '\0';
 
 
     printf("Server response: %s",
            buffer);
 
 
-    /*
-     * Registration failed.
-     */
     if (strncmp(buffer,
                 "OK REGISTERED",
                 13) != 0)
@@ -179,27 +160,27 @@ int main(void)
 
     printf("\n");
     printf("Connection is active.\n");
+
     printf("Available commands:\n");
     printf("  LIST\n");
     printf("  BCAST <message>\n");
     printf("  PMSG <username> <message>\n");
+    printf("  JOIN <room>\n");
+    printf("  LEAVE <room>\n");
+    printf("  ROOMS\n");
+    printf("  RMSG <room> <message>\n");
     printf("  QUIT\n");
     printf("\n");
 
+    printf("NetMessenger> ");
 
-    /*
-     * Interactive client loop.
-     *
-     * select() allows the client to
-     * receive incoming messages while
-     * waiting for keyboard input.
-     */
+    fflush(stdout);
+
+
+    /* Interactive loop */
     while (1)
     {
         fd_set read_fds;
-
-        int max_fd;
-
 
         FD_ZERO(&read_fds);
 
@@ -210,20 +191,12 @@ int main(void)
                &read_fds);
 
 
-        if (client_fd > STDIN_FILENO)
-        {
-            max_fd = client_fd;
-        }
-        else
-        {
-            max_fd = STDIN_FILENO;
-        }
+        int max_fd =
+            client_fd > STDIN_FILENO
+            ? client_fd
+            : STDIN_FILENO;
 
 
-        /*
-         * Wait for keyboard input
-         * or server data.
-         */
         int result =
             select(max_fd + 1,
                    &read_fds,
@@ -239,9 +212,7 @@ int main(void)
         }
 
 
-        /*
-         * Server sent data.
-         */
+        /* Server message */
         if (FD_ISSET(client_fd,
                      &read_fds))
         {
@@ -259,7 +230,9 @@ int main(void)
             }
 
 
-            buffer[bytes_received] = '\0';
+            buffer[bytes_received] =
+                '\0';
+
 
             printf("\nServer: %s",
                    buffer);
@@ -270,9 +243,7 @@ int main(void)
         }
 
 
-        /*
-         * User typed a command.
-         */
+        /* User command */
         if (FD_ISSET(STDIN_FILENO,
                      &read_fds))
         {
@@ -291,9 +262,6 @@ int main(void)
                             "\r\n")] = '\0';
 
 
-            /*
-             * Ignore empty command.
-             */
             if (strlen(command) == 0)
             {
                 printf("NetMessenger> ");
@@ -304,13 +272,12 @@ int main(void)
             }
 
 
-            /*
-             * QUIT.
-             */
+            /* QUIT */
             if (strcmp(command,
                        "QUIT") == 0)
             {
-                strcat(command, "\n");
+                strcat(command,
+                       "\n");
 
 
                 if (send(client_fd,
@@ -323,9 +290,6 @@ int main(void)
                 }
 
 
-                /*
-                 * Receive OK BYE.
-                 */
                 bytes_received =
                     recv(client_fd,
                          buffer,
@@ -335,21 +299,20 @@ int main(void)
 
                 if (bytes_received > 0)
                 {
-                    buffer[bytes_received] = '\0';
+                    buffer[bytes_received] =
+                        '\0';
 
                     printf("Server response: %s",
                            buffer);
                 }
 
-
                 break;
             }
 
 
-            /*
-             * Send command.
-             */
-            strcat(command, "\n");
+            /* Send command */
+            strcat(command,
+                   "\n");
 
 
             if (send(client_fd,
@@ -364,13 +327,9 @@ int main(void)
     }
 
 
-    /*
-     * Close connection.
-     */
     close(client_fd);
 
     printf("Disconnected from server.\n");
-
 
     return 0;
 }
