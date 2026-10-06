@@ -68,7 +68,7 @@ void send_user_list(int client_fd)
 
     offset += snprintf(response + offset,
                        sizeof(response) - offset,
-                       "OK USERS");
+                       "OK USERS ");
 
     pthread_mutex_lock(&clients_mutex);
 
@@ -76,10 +76,16 @@ void send_user_list(int client_fd)
     {
         if (clients[i].registered)
         {
+            if (!first_user)
+            {
+                offset += snprintf(response + offset,
+                                   sizeof(response) - offset,
+                                   ",");
+            }
+
             offset += snprintf(response + offset,
                                sizeof(response) - offset,
-                               "%s %s",
-                               first_user ? " " : ", ",
+                               "%s",
                                clients[i].username);
 
             first_user = 0;
@@ -100,7 +106,38 @@ void send_user_list(int client_fd)
 }
 
 
-/* Handle one client */
+/* Broadcast message to all other registered clients */
+void broadcast_message(int sender_index,
+                       const char *message)
+{
+    char response[1200];
+
+    snprintf(response,
+             sizeof(response),
+             "MSG BCAST %s %s\n",
+             clients[sender_index].username,
+             message);
+
+    pthread_mutex_lock(&clients_mutex);
+
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (i != sender_index &&
+            clients[i].registered &&
+            clients[i].socket_fd != -1)
+        {
+            send(clients[i].socket_fd,
+                 response,
+                 strlen(response),
+                 0);
+        }
+    }
+
+    pthread_mutex_unlock(&clients_mutex);
+}
+
+
+/* Handle one connected client */
 void *handle_client(void *arg)
 {
     int client_index = *(int *)arg;
@@ -112,7 +149,7 @@ void *handle_client(void *arg)
 
     char buffer[1024];
 
-    int registered_first_command = 0;
+    int registered = 0;
 
     printf("Client connected.\n");
 
@@ -139,7 +176,7 @@ void *handle_client(void *arg)
 
 
         /*
-         * REGISTER command
+         * REGISTER
          */
         if (strncmp(buffer, "REGISTER ", 9) == 0)
         {
@@ -152,7 +189,7 @@ void *handle_client(void *arg)
             username[sizeof(username) - 1] = '\0';
 
 
-            if (registered_first_command)
+            if (registered)
             {
                 char response[256];
 
@@ -178,10 +215,6 @@ void *handle_client(void *arg)
 
             pthread_mutex_lock(&clients_mutex);
 
-
-            /*
-             * Check duplicate username
-             */
             if (username_exists(username))
             {
                 snprintf(response,
@@ -201,8 +234,7 @@ void *handle_client(void *arg)
 
                 clients[client_index].registered = 1;
 
-                registered_first_command = 1;
-
+                registered = 1;
 
                 snprintf(response,
                          sizeof(response),
@@ -211,9 +243,7 @@ void *handle_client(void *arg)
                          NID);
             }
 
-
             pthread_mutex_unlock(&clients_mutex);
-
 
             send(client_fd,
                  response,
@@ -223,11 +253,11 @@ void *handle_client(void *arg)
 
 
         /*
-         * LIST command
+         * LIST
          */
         else if (strcmp(buffer, "LIST") == 0)
         {
-            if (!registered_first_command)
+            if (!registered)
             {
                 char response[256];
 
@@ -251,7 +281,80 @@ void *handle_client(void *arg)
 
 
         /*
-         * QUIT command
+         * BCAST
+         */
+        else if (strncmp(buffer, "BCAST ", 6) == 0)
+        {
+            if (!registered)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 NOT_REGISTERED NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+
+            char *message = buffer + 6;
+
+
+            if (strlen(message) == 0)
+            {
+                char response[256];
+
+                snprintf(response,
+                         sizeof(response),
+                         "ERR 001 INVALID_COMMAND NID:%s\n",
+                         NID);
+
+                send(client_fd,
+                     response,
+                     strlen(response),
+                     0);
+
+                continue;
+            }
+
+
+            printf("Broadcast from %s: %s\n",
+                   clients[client_index].username,
+                   message);
+
+
+            /*
+             * Send message to all other clients.
+             */
+            broadcast_message(client_index,
+                              message);
+
+
+            /*
+             * Confirm to sender.
+             */
+            char response[256];
+
+            snprintf(response,
+                     sizeof(response),
+                     "OK SENT NID:%s\n",
+                     NID);
+
+            send(client_fd,
+                 response,
+                 strlen(response),
+                 0);
+        }
+
+
+        /*
+         * QUIT
          */
         else if (strcmp(buffer, "QUIT") == 0)
         {
@@ -274,7 +377,7 @@ void *handle_client(void *arg)
 
 
         /*
-         * Unknown command
+         * Invalid command
          */
         else
         {
@@ -294,7 +397,7 @@ void *handle_client(void *arg)
 
 
     /*
-     * Clean up client
+     * Clean up disconnected client.
      */
     close(client_fd);
 
@@ -322,7 +425,7 @@ int main(void)
 
 
     /*
-     * Initialize client slots
+     * Initialize client slots.
      */
     for (i = 0; i < MAX_CLIENTS; i++)
     {
@@ -333,7 +436,7 @@ int main(void)
 
 
     /*
-     * Create TCP socket
+     * Create TCP socket.
      */
     server_fd = socket(AF_INET,
                        SOCK_STREAM,
@@ -347,7 +450,7 @@ int main(void)
 
 
     /*
-     * Configure server address
+     * Configure server address.
      */
     memset(&server_addr,
            0,
@@ -363,7 +466,7 @@ int main(void)
 
 
     /*
-     * Bind socket
+     * Bind socket.
      */
     if (bind(server_fd,
              (struct sockaddr *)&server_addr,
@@ -378,7 +481,7 @@ int main(void)
 
 
     /*
-     * Listen
+     * Listen.
      */
     if (listen(server_fd,
                BACKLOG) < 0)
@@ -398,7 +501,7 @@ int main(void)
 
 
     /*
-     * Accept clients continuously
+     * Accept clients continuously.
      */
     while (1)
     {
@@ -428,7 +531,7 @@ int main(void)
 
 
         /*
-         * Server full
+         * Server full.
          */
         if (client_index == -1)
         {
@@ -453,7 +556,7 @@ int main(void)
 
 
         /*
-         * Store client socket
+         * Store client.
          */
         clients[client_index].socket_fd =
             client_fd;
@@ -468,13 +571,10 @@ int main(void)
 
 
         /*
-         * Create thread
+         * Allocate thread argument.
          */
-        pthread_t thread;
-
         int *index =
             malloc(sizeof(int));
-
 
         if (index == NULL)
         {
@@ -494,6 +594,11 @@ int main(void)
 
         *index = client_index;
 
+
+        /*
+         * Create client thread.
+         */
+        pthread_t thread;
 
         if (pthread_create(&thread,
                            NULL,
@@ -516,9 +621,6 @@ int main(void)
         }
 
 
-        /*
-         * Detach thread
-         */
         pthread_detach(thread);
     }
 
