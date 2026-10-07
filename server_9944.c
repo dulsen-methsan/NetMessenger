@@ -93,6 +93,35 @@ int recv_all(int fd, void *buffer, size_t length)
 }
 
 
+int discard_bytes(int fd, long long length)
+{
+    char buffer[65536];
+
+    while (length > 0)
+    {
+        size_t amount;
+
+        if (length > (long long)sizeof(buffer))
+        {
+            amount = sizeof(buffer);
+        }
+        else
+        {
+            amount = (size_t)length;
+        }
+
+        if (recv_all(fd, buffer, amount) < 0)
+        {
+            return -1;
+        }
+
+        length -= amount;
+    }
+
+    return 0;
+}
+
+
 void log_event(const char *format, ...)
 {
     FILE *file;
@@ -1129,9 +1158,15 @@ void *handle_client(void *argument)
                 find_room(room_name);
 
 
-            if (room_index == -1 ||
-                !room_has_member(room_index,
-                                 client_index))
+            if (room_index == -1)
+            {
+                pthread_mutex_unlock(&clients_mutex);
+
+                send_response(client_fd,
+                              "ERR 003 ROOM_NOT_FOUND");
+            }
+            else if (!room_has_member(room_index,
+                                      client_index))
             {
                 pthread_mutex_unlock(&clients_mutex);
 
@@ -1269,7 +1304,14 @@ void *handle_client(void *argument)
                                 client_index);
 
 
-            if (!member)
+            if (room_index == -1)
+            {
+                pthread_mutex_unlock(&clients_mutex);
+
+                send_response(client_fd,
+                              "ERR 003 ROOM_NOT_FOUND");
+            }
+            else if (!member)
             {
                 pthread_mutex_unlock(&clients_mutex);
 
@@ -1315,6 +1357,8 @@ void *handle_client(void *argument)
             long long filesize;
             char *end_pointer;
 
+            int target_user;
+            int target_room;
             int result;
 
 
@@ -1354,15 +1398,6 @@ void *handle_client(void *argument)
                 second_space + 1;
 
 
-            if (!valid_filename(filename))
-            {
-                send_response(client_fd,
-                              "ERR 001 INVALID_COMMAND");
-
-                continue;
-            }
-
-
             filesize =
                 strtoll(size_text,
                         &end_pointer,
@@ -1374,6 +1409,69 @@ void *handle_client(void *argument)
             {
                 send_response(client_fd,
                               "ERR 001 INVALID_COMMAND");
+
+                continue;
+            }
+
+
+            if (filesize < 0)
+            {
+                send_response(client_fd,
+                              "ERR 001 INVALID_COMMAND");
+
+                continue;
+            }
+
+
+            if (filesize > MAX_FILE_SIZE)
+            {
+                if (discard_bytes(client_fd, filesize) < 0)
+                {
+                    goto disconnect;
+                }
+
+                send_response(client_fd,
+                              "ERR 004 FILE_TOO_LARGE");
+
+                continue;
+            }
+
+
+            if (!valid_filename(filename))
+            {
+                if (discard_bytes(client_fd, filesize) < 0)
+                {
+                    goto disconnect;
+                }
+
+                send_response(client_fd,
+                              "ERR 001 INVALID_COMMAND");
+
+                continue;
+            }
+
+
+            pthread_mutex_lock(&clients_mutex);
+
+            target_user =
+                find_client_by_username(data);
+
+            target_room =
+                find_room(data);
+
+            pthread_mutex_unlock(&clients_mutex);
+
+
+            if (target_user == -1 &&
+                target_room == -1)
+            {
+                if (discard_bytes(client_fd, filesize) < 0)
+                {
+                    goto disconnect;
+                }
+
+                send_response(client_fd,
+                              "ERR 002 USER_NOT_FOUND");
 
                 continue;
             }
@@ -1395,6 +1493,11 @@ void *handle_client(void *argument)
             {
                 send_response(client_fd,
                               "ERR 002 USER_NOT_FOUND");
+            }
+            else if (result == -6)
+            {
+                send_response(client_fd,
+                              "ERR 001 INVALID_COMMAND");
             }
             else if (result < 0)
             {

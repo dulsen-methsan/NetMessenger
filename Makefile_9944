@@ -1,0 +1,24 @@
+CC = gcc
+CFLAGS = -Wall -Wextra
+LDFLAGS = -pthread
+
+SERVER = server_9944
+CLIENT = client_9944
+
+SERVER_SRC = server_9944.c
+CLIENT_SRC = client_9944.c
+
+all: $(SERVER) $(CLIENT)
+
+$(SERVER): $(SERVER_SRC)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(SERVER) $(SERVER_SRC)
+
+$(CLIENT): $(CLIENT_SRC)
+	$(CC) $(CFLAGS) -o $(CLIENT) $(CLIENT_SRC)
+
+clean:
+	rm -f $(SERVER) $(CLIENT)
+
+rebuild: clean all
+
+.PHONY: all clean rebuild
