@@ -1,78 +1,74 @@
 # NetMessenger
 
-## IE3010 Network Programming Assignment
+## IE3010 - Network Programming
 
-### Student Details
+### NetMessenger: A Multi-Client Chat and File-Sharing Platform over TCP/IP
 
-- Registration Number: IT23619944
-- Node ID (NID): 6199
+---
 
-## Personalised Configuration
+## 1. Student Details
 
-| Item | Value |
-|---|---|
-| Server Port | 15944 |
-| Server Source File | server_9944.c |
-| Client Source File | client_9944.c |
-| Makefile | Makefile_9944 |
-| Log File | netmsg_IT23619944.log |
-| Storage Path | ./storage/IT23619944/ |
-| Submission Archive | IE3010_IT23619944.zip |
+- Registration Number: **IT23619944**
+- Node ID (NID): **6199**
+- Module: **IE3010 - Network Programming**
+- Assignment: **NetMessenger**
+
+---
+
+## 2. Personalisation Details
+
+The implementation uses the values derived from the registration number according to the assignment specification.
+
+|     Item            |           Personalised Value     |
+|---------------------|----------------------------------|
+| Registration Number |               IT23619944         |
+| Last Four Digits    |                  9944            |
+| Middle Four Digits  |                  6199            |
+| Server Port         |                  15944           |
+| Server Source File  |                server_9944.c     |
+| Client Source File  |                client_9944.c     |
+| Makefile            |                Makefile_9944     |
+| Node ID (NID)       |                  6199            |
+| Log File            |          netmsg_IT23619944.log   |
+| Storage Root        |          ./storage/IT23619944/   |
+| Submission Archive  |          IE3010_IT23619944.zip   |
+----------------------------------------------------------
 
 ### Port Calculation
 
-Registration number: IT23619944
+Registration Number:
 
-Last four digits: 9944
+**IT23619944**
 
-Server port:
+Last four digits:
 
-6000 + 9944 = 15944
+**9944**
+
+Server port calculation:
+
+**6000 + 9944 = 15944**
+
+Therefore, the server listens on TCP port:
+
+**15944**
 
 ### NID Calculation
 
 Numeric part of the registration number:
 
-23619944
+**23619944**
 
-Middle four digits (digits 3–6):
+The middle four digits (3rd to 6th digits) are:
 
-6199
+**6199**
 
 Therefore:
 
-NID: 6199
+**NID:6199**
 
-## Project Description
+### Personalised Storage Path
 
-NetMessenger is a multi-client TCP/IP chat and file-sharing application implemented in C using the standard BSD sockets API.
-
-The system consists of:
-
-- One TCP server
-- Multiple TCP clients
-- pthread-based concurrency
-- User registration and presence notifications
-- Broadcast messaging
-- Private messaging
-- Chat rooms
-- File sharing
-- Server-side logging
-- Error handling
-- Graceful and ungraceful disconnect handling
-
-## Implemented Commands
-
-The following commands are implemented:
+Received files are stored using the following structure:
 
 ```text
-REGISTER <username>
-LIST
-BCAST <message>
-PMSG <username> <message>
-JOIN <room>
-LEAVE <room>
-ROOMS
-RMSG <room> <message>
-SENDFILE <target> <filename>
-QUIT
+./storage/IT23619944/<sender_username>/<filename>
