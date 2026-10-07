@@ -337,7 +337,7 @@ Requested guidance on organising meaningful Git commits and checking the reposit
 **How the output was used:**  
 The project was reviewed incrementally and meaningful changes were committed during development.
 
-The final local history contains commits for:
+The main development history includes commits for:
 
 1. Project initialisation
 2. Multi-client registration and duplicate validation
@@ -350,6 +350,8 @@ The final local history contains commits for:
 9. Rate limiting and flood protection
 10. README update with optional extension
 11. Design diary and development decisions
+12. AI prompt log and interaction record
+13. structured learning reflection
 
 **My evaluation / changes:**  
 The commit history was reviewed using Git commands and pushed to the GitHub repository. The GitHub remote and push result were also verified.
